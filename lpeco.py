@@ -40,5 +40,32 @@ class LionOptimizer(keras.optimizers.Optimizer):
             m.assign(m_update)
         )
 
+def create_simple_model(input_dim, num_classes):
+    """Create a simple neural network model."""
+    model = keras.Sequential([
+        keras.layers.Dense(64, activation='relu', input_shape=(input_dim,)),
+            keras.layers.Dense(32, activation='relu'),
+            keras.layers.Dense(num_classes, activation='softmax')
+        ])
+    return model
+
+def train_model(model, X_train, y_train, X_val, y_val, epochs=100):
+    """Train a model and return training history."""
+    model.compile(
+        optimizer=LionOptimizer(learning_rate=0.001),
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=epochs,
+        verbose=0
+    )
+    
+    return history.history
+
 if __name__ == "__main__":
     print("Basic Lion Optimizer Implementation")
+    print("Added neural network training capabilities")
