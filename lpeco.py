@@ -19,6 +19,13 @@ class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
         self._error_decay = error_decay
         self._correction_strength = correction_strength
         
+        # Register hyperparameters
+        self._set_hyper("learning_rate", learning_rate)
+        self._set_hyper("beta_1", beta_1)
+        self._set_hyper("beta_2", beta_2)
+        self._set_hyper("error_decay", error_decay)
+        self._set_hyper("correction_strength", correction_strength)
+        
     def _create_slots(self, var_list):
         for var in var_list:
             self.add_slot(var, "m")
@@ -58,6 +65,17 @@ class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
             m.assign(m_update),
             I.assign(I_update)
         )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "learning_rate": self._serialize_hyperparameter("learning_rate"),
+            "beta_1": self._serialize_hyperparameter("beta_1"),
+            "beta_2": self._serialize_hyperparameter("beta_2"),
+            "error_decay": self._serialize_hyperparameter("error_decay"),
+            "correction_strength": self._serialize_hyperparameter("correction_strength"),
+        })
+        return config
 
 def create_simple_model(input_dim, num_classes):
     """Create a simple neural network model."""
