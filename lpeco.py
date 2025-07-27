@@ -6,6 +6,15 @@ Author: Siavash Mobarhan
 import tensorflow as tf
 import keras
 import numpy as np
+import pandas as pd
+import time
+import logging
+import os
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score
+import lightgbm as lgb
+import xgboost as xgb
 
 class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
     """Lion optimizer with predictive error correction based on PI control theory."""
@@ -103,6 +112,74 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100):
     
     return history.history
 
+def load_openml_tabular_datasets():
+    """Load tabular datasets from OpenML for benchmarking."""
+    try:
+        import openml
+        datasets = {}
+        
+        # Load small datasets for initial testing
+        dataset_ids = [31, 37, 44, 46, 50, 54, 60, 61]  # Common tabular datasets
+        
+        for dataset_id in dataset_ids:
+            try:
+                dataset = openml.datasets.get_dataset(dataset_id)
+                X, y, _, _ = dataset.get_data(target=dataset.default_target_attribute)
+                datasets[dataset.name] = {'X': X, 'y': y}
+        except Exception as e:
+                print(f"Failed to load dataset {dataset_id}: {e}")
+                continue
+    
+    return datasets
+    except ImportError:
+        print("OpenML not available, using synthetic data")
+        return {}
+
+def preprocess_data(X, y):
+    """Basic data preprocessing for tabular data."""
+    # Handle missing values
+    if hasattr(X, 'fillna'):
+        X = X.fillna(X.mean())
+    
+    # Encode categorical variables
+    le = LabelEncoder()
+    if y.dtype == 'object':
+        y = le.fit_transform(y)
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    return X_scaled, y
+
+def benchmark_optimizer(optimizer_name, X, y, cv_folds=5):
+    """Benchmark an optimizer on a dataset."""
+    kf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    scores = []
+    times = []
+    
+    for train_idx, val_idx in kf.split(X, y):
+        X_train, X_val = X[train_idx], X[val_idx]
+        y_train, y_val = y[train_idx], y[val_idx]
+        
+        # Preprocess data
+        X_train, y_train = preprocess_data(X_train, y_train)
+        X_val, y_val = preprocess_data(X_val, y_val)
+        
+        # Create and train model
+        model = create_simple_model(X_train.shape[1], len(np.unique(y_train)))
+        
+        start_time = time.time()
+        history = train_model(model, X_train, y_train, X_val, y_val)
+        end_time = time.time()
+        
+        # Get best validation accuracy
+        best_val_acc = max(history['val_accuracy'])
+        scores.append(best_val_acc)
+        times.append(end_time - start_time)
+    
+    return np.mean(scores), np.std(scores), np.mean(times)
+
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
-    print("Added PI control theory integration")
+    print("Added comprehensive benchmarking framework")
