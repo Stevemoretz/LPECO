@@ -180,6 +180,77 @@ def benchmark_optimizer(optimizer_name, X, y, cv_folds=5):
     
     return np.mean(scores), np.std(scores), np.mean(times)
 
+def train_xgboost(X_train, y_train, X_val, y_val, params=None):
+    """Train XGBoost model with given parameters."""
+    if params is None:
+        params = {
+            'max_depth': 6,
+            'learning_rate': 0.1,
+            'n_estimators': 100,
+            'random_state': 42
+        }
+    
+    model = xgb.XGBClassifier(**params)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_val)
+    accuracy = accuracy_score(y_val, y_pred)
+    
+    return accuracy, model
+
+def train_lightgbm(X_train, y_train, X_val, y_val, params=None):
+    """Train LightGBM model with given parameters."""
+    if params is None:
+        params = {
+            'max_depth': 6,
+            'learning_rate': 0.1,
+            'n_estimators': 100,
+            'random_state': 42,
+            'verbose': -1
+        }
+    
+    model = lgb.LGBMClassifier(**params)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_val)
+    accuracy = accuracy_score(y_val, y_pred)
+    
+    return accuracy, model
+
+def benchmark_gbdt(dataset_name, X, y, cv_folds=5):
+    """Benchmark GBDT models on a dataset."""
+    kf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    
+    xgb_scores = []
+    lgb_scores = []
+    xgb_times = []
+    lgb_times = []
+    
+    for train_idx, val_idx in kf.split(X, y):
+        X_train, X_val = X[train_idx], X[val_idx]
+        y_train, y_val = y[train_idx], y[val_idx]
+        
+        # Preprocess data
+        X_train, y_train = preprocess_data(X_train, y_train)
+        X_val, y_val = preprocess_data(X_val, y_val)
+        
+        # XGBoost
+        start_time = time.time()
+        xgb_acc, _ = train_xgboost(X_train, y_train, X_val, y_val)
+        xgb_times.append(time.time() - start_time)
+        xgb_scores.append(xgb_acc)
+        
+        # LightGBM
+        start_time = time.time()
+        lgb_acc, _ = train_lightgbm(X_train, y_train, X_val, y_val)
+        lgb_times.append(time.time() - start_time)
+        lgb_scores.append(lgb_acc)
+    
+    return {
+        'XGBoost': (np.mean(xgb_scores), np.std(xgb_scores), np.mean(xgb_times)),
+        'LightGBM': (np.mean(lgb_scores), np.std(lgb_scores), np.mean(lgb_times))
+    }
+
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
     print("Added comprehensive benchmarking framework")
