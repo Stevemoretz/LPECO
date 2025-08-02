@@ -15,6 +15,9 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import accuracy_score
 import lightgbm as lgb
 import xgboost as xgb
+import optuna
+import json
+import hashlib
 
 class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
     """Lion optimizer with predictive error correction based on PI control theory."""
@@ -250,6 +253,79 @@ def benchmark_gbdt(dataset_name, X, y, cv_folds=5):
         'XGBoost': (np.mean(xgb_scores), np.std(xgb_scores), np.mean(xgb_times)),
         'LightGBM': (np.mean(lgb_scores), np.std(lgb_scores), np.mean(lgb_times))
     }
+
+def load_cache():
+    """Load cached results if available."""
+    cache_file = 'cached_algorithms_results'
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_to_cache(opt_hyperparams, opt_name, dataset, model_type, score, training_time):
+    """Save results to cache."""
+    cache_file = 'cached_algorithms_results'
+    cache = load_cache()
+    
+    key = f"{opt_name}_{dataset}_{model_type}_{opt_hyperparams}"
+    cache[key] = {
+        'score': score,
+        'training_time': training_time,
+        'hyperparams': opt_hyperparams
+    }
+    
+    with open(cache_file, 'w') as f:
+        json.dump(cache, f)
+
+def generate_hyperparams_str(param_dict):
+    """Generate a stable hash string from hyperparameters."""
+    sorted_params = sorted(param_dict.items())
+    param_str = '_'.join([f"{k}_{v}" for k, v in sorted_params])
+    return hashlib.md5(param_str.encode()).hexdigest()
+
+def optimize_lpeco_hyperparams(X, y, n_trials=50):
+    """Optimize LPECO hyperparameters using Optuna."""
+    def objective(trial):
+        params = {
+            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True),
+            'beta_1': trial.suggest_float('beta_1', 0.85, 0.999),
+            'beta_2': trial.suggest_float('beta_2', 0.98, 0.9999),
+            'error_decay': trial.suggest_float('error_decay', 0.98, 1.0),
+            'correction_strength': trial.suggest_float('correction_strength', 0.01, 0.5)
+        }
+        
+        # Quick evaluation
+        kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+        scores = []
+        
+        for train_idx, val_idx in kf.split(X, y):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            X_train, y_train = preprocess_data(X_train, y_train)
+            X_val, y_val = preprocess_data(X_val, y_val)
+            
+            model = create_simple_model(X_train.shape[1], len(np.unique(y_train)))
+            model.compile(
+                optimizer=LionPredictiveErrorCorrectionOptimizer(**params),
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy']
+            )
+            
+            history = model.fit(X_train, y_train, validation_data=(X_val, y_val), 
+                              epochs=50, verbose=0)
+            
+            scores.append(max(history.history['val_accuracy']))
+        
+        return np.mean(scores)
+    
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=n_trials)
+    
+    return study.best_params, study.best_value
 
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
