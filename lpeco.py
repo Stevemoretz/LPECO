@@ -18,6 +18,18 @@ import xgboost as xgb
 import optuna
 import json
 import hashlib
+import pingouin as pg
+from scipy import stats
+import warnings
+warnings.filterwarnings("ignore")
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import plotly.io as pio
+pio.renderers.default = "notebook"
+import plotly.express as px
+import plotly.graph_objects as go
+import seaborn as sns
 
 class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
     """Lion optimizer with predictive error correction based on PI control theory."""
@@ -326,6 +338,101 @@ def optimize_lpeco_hyperparams(X, y, n_trials=50):
     study.optimize(objective, n_trials=n_trials)
     
     return study.best_params, study.best_value
+
+def friedman_test(results_df):
+    """Perform Friedman test for multiple algorithm comparison."""
+    try:
+        # Prepare data for Friedman test
+        algorithms = results_df['algorithm'].unique()
+        datasets = results_df['dataset'].unique()
+        
+        # Create matrix: datasets x algorithms
+        data_matrix = []
+        for dataset in datasets:
+            dataset_scores = []
+            for alg in algorithms:
+                score = results_df[(results_df['dataset'] == dataset) & 
+                                 (results_df['algorithm'] == alg)]['score'].iloc[0]
+                dataset_scores.append(score)
+            data_matrix.append(dataset_scores)
+        
+        data_matrix = np.array(data_matrix)
+        
+        # Perform Friedman test
+        statistic, p_value = stats.friedmanchisquare(*data_matrix.T)
+        
+        return {
+            'statistic': statistic,
+            'p_value': p_value,
+            'algorithms': algorithms.tolist(),
+            'datasets': datasets.tolist()
+        }
+    except Exception as e:
+        print(f"Friedman test failed: {e}")
+        return None
+
+def equivalence_test(scores1, scores2, margin=0.02):
+    """Perform Two One-Sided Tests (TOST) for equivalence."""
+    try:
+        # Calculate means and standard errors
+        mean1, mean2 = np.mean(scores1), np.mean(scores2)
+        se1, se2 = np.std(scores1) / np.sqrt(len(scores1)), np.std(scores2) / np.sqrt(len(scores2))
+        
+        # Calculate difference and its standard error
+        diff = mean1 - mean2
+        se_diff = np.sqrt(se1**2 + se2**2)
+        
+        # TOST procedure
+        t1 = (diff - (-margin)) / se_diff
+        t2 = (diff - margin) / se_diff
+        
+        # Degrees of freedom
+        df = len(scores1) + len(scores2) - 2
+        
+        # P-values for one-sided tests
+        p1 = 1 - stats.t.cdf(t1, df)
+        p2 = stats.t.cdf(t2, df)
+        
+        # Equivalence if both p-values < 0.05
+        equivalent = max(p1, p2) < 0.05
+        
+        return {
+            'equivalent': equivalent,
+            'p_value': max(p1, p2),
+            'difference': diff,
+            'margin': margin,
+            'confidence_interval': [diff - 1.96*se_diff, diff + 1.96*se_diff]
+        }
+    except Exception as e:
+        print(f"Equivalence test failed: {e}")
+        return None
+
+def bayesian_rope_analysis(scores1, scores2, rope_margin=0.02):
+    """Perform Bayesian ROPE analysis for practical equivalence."""
+    try:
+        # Simple Bayesian analysis using normal approximation
+        mean1, mean2 = np.mean(scores1), np.mean(scores2)
+        var1, var2 = np.var(scores1), np.var(scores2)
+        n1, n2 = len(scores1), len(scores2)
+        
+        # Posterior distribution parameters
+        post_mean = mean1 - mean2
+        post_var = var1/n1 + var2/n2
+        post_std = np.sqrt(post_var)
+        
+        # Calculate probability within ROPE
+        prob_in_rope = stats.norm.cdf(rope_margin, post_mean, post_std) - \
+                      stats.norm.cdf(-rope_margin, post_mean, post_std)
+        
+        return {
+            'prob_in_rope': prob_in_rope,
+            'posterior_mean': post_mean,
+            'posterior_std': post_std,
+            'rope_margin': rope_margin
+        }
+    except Exception as e:
+        print(f"Bayesian ROPE analysis failed: {e}")
+        return None
 
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
