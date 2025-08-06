@@ -434,6 +434,59 @@ def bayesian_rope_analysis(scores1, scores2, rope_margin=0.02):
         print(f"Bayesian ROPE analysis failed: {e}")
         return None
 
+def create_analysis_plots(results_df, output_dir='analysis/plots'):
+    """Create comprehensive analysis plots."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 1. Performance distribution plot
+    plt.figure(figsize=(12, 8))
+    sns.boxplot(data=results_df, x='algorithm', y='score')
+    plt.title('Performance Distribution by Algorithm')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/performance_distribution.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # 2. Mean algorithm rank
+    mean_ranks = results_df.groupby('algorithm')['score'].mean().rank(ascending=False)
+    plt.figure(figsize=(10, 6))
+    mean_ranks.plot(kind='bar')
+    plt.title('Mean Algorithm Rank')
+    plt.ylabel('Mean Rank')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/mean_algorithm_rank.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Analysis plots saved to {output_dir}/")
+
+def plot_equivalence_analysis(scores1, scores2, algorithm1, algorithm2, output_dir='analysis/plots'):
+    """Create equivalence analysis plots."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create comparison plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Box plot comparison
+    data = [scores1, scores2]
+    labels = [algorithm1, algorithm2]
+    ax1.boxplot(data, labels=labels)
+    ax1.set_title(f'Performance Comparison: {algorithm1} vs {algorithm2}')
+    ax1.set_ylabel('Accuracy')
+    
+    # Distribution plot
+    ax2.hist(scores1, alpha=0.7, label=algorithm1, bins=10)
+    ax2.hist(scores2, alpha=0.7, label=algorithm2, bins=10)
+    ax2.set_title(f'Score Distributions: {algorithm1} vs {algorithm2}')
+    ax2.set_xlabel('Accuracy')
+    ax2.set_ylabel('Frequency')
+    ax2.legend()
+    
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/equivalence_analysis_{algorithm1}_vs_{algorithm2}.png', 
+                dpi=300, bbox_inches='tight')
+    plt.close()
+
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
     print("Added comprehensive benchmarking framework")
