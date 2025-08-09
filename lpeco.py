@@ -443,10 +443,10 @@ def create_analysis_plots(results_df, output_dir='analysis/plots'):
     sns.boxplot(data=results_df, x='algorithm', y='score')
     plt.title('Performance Distribution by Algorithm')
     plt.xticks(rotation=45)
-    plt.tight_layout()
+plt.tight_layout()
     plt.savefig(f'{output_dir}/performance_distribution.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
+plt.close()
+
     # 2. Mean algorithm rank
     mean_ranks = results_df.groupby('algorithm')['score'].mean().rank(ascending=False)
     plt.figure(figsize=(10, 6))
@@ -482,11 +482,161 @@ def plot_equivalence_analysis(scores1, scores2, algorithm1, algorithm2, output_d
     ax2.set_ylabel('Frequency')
     ax2.legend()
     
-    plt.tight_layout()
+plt.tight_layout()
     plt.savefig(f'{output_dir}/equivalence_analysis_{algorithm1}_vs_{algorithm2}.png', 
                 dpi=300, bbox_inches='tight')
-    plt.close()
+plt.close()
+
+class OptimizerBenchmark:
+    """Comprehensive benchmarking system for optimizers and GBDT models."""
+    
+    def __init__(self, use_cache=True):
+        self.use_cache = use_cache
+        self.results = []
+        self.cache = load_cache() if use_cache else {}
+        
+    def run_full_benchmark(self, datasets=None, n_trials=128):
+        """Run comprehensive benchmark across all datasets and algorithms."""
+        if datasets is None:
+            datasets = load_openml_tabular_datasets()
+        
+        algorithms = ['LPECO', 'Lion', 'AdamW', 'XGBoost', 'LightGBM']
+        
+        for dataset_name, dataset_data in datasets.items():
+            print(f"Processing dataset: {dataset_name}")
+            X, y = dataset_data['X'], dataset_data['y']
+            
+            for algorithm in algorithms:
+                print(f"  Running {algorithm}...")
+                
+                # Check cache first
+                cache_key = f"{algorithm}_{dataset_name}_neural_network_{generate_hyperparams_str({})}"
+                if cache_key in self.cache:
+                    result = self.cache[cache_key]
+                    self.results.append({
+                        'dataset': dataset_name,
+                        'algorithm': algorithm,
+                        'score': result['score'],
+                        'training_time': result['training_time']
+                    })
+            continue
+    
+                # Run optimization
+                if algorithm == 'LPECO':
+                    score, time_taken = self._run_lpeco_optimization(X, y, n_trials)
+                elif algorithm in ['Lion', 'AdamW']:
+                    score, time_taken = self._run_optimizer_benchmark(algorithm, X, y)
+                else:  # GBDT models
+                    score, time_taken = self._run_gbdt_benchmark(algorithm, X, y)
+                
+                # Cache result
+                if self.use_cache:
+                    save_to_cache("", algorithm, dataset_name, "neural_network", score, time_taken)
+                
+                self.results.append({
+                    'dataset': dataset_name,
+                    'algorithm': algorithm,
+                    'score': score,
+                    'training_time': time_taken
+                })
+        
+        return pd.DataFrame(self.results)
+    
+    def _run_lpeco_optimization(self, X, y, n_trials):
+        """Run LPECO with hyperparameter optimization."""
+        best_params, best_score = optimize_lpeco_hyperparams(X, y, n_trials)
+        
+        # Full evaluation with best parameters
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        scores = []
+        times = []
+        
+        for train_idx, val_idx in kf.split(X, y):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            X_train, y_train = preprocess_data(X_train, y_train)
+            X_val, y_val = preprocess_data(X_val, y_val)
+            
+            model = create_simple_model(X_train.shape[1], len(np.unique(y_train)))
+            model.compile(
+                optimizer=LionPredictiveErrorCorrectionOptimizer(**best_params),
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy']
+            )
+            
+            start_time = time.time()
+            history = model.fit(X_train, y_train, validation_data=(X_val, y_val), 
+                              epochs=100, verbose=0)
+            end_time = time.time()
+            
+            scores.append(max(history.history['val_accuracy']))
+            times.append(end_time - start_time)
+        
+        return np.mean(scores), np.mean(times)
+    
+    def _run_optimizer_benchmark(self, optimizer_name, X, y):
+        """Run neural network optimizer benchmark."""
+        if optimizer_name == 'Lion':
+            optimizer = LionPredictiveErrorCorrectionOptimizer(
+                learning_rate=0.001, error_decay=1.0, correction_strength=0.0
+            )
+        else:  # AdamW
+            optimizer = keras.optimizers.AdamW(learning_rate=0.001)
+        
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        scores = []
+        times = []
+        
+        for train_idx, val_idx in kf.split(X, y):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            X_train, y_train = preprocess_data(X_train, y_train)
+            X_val, y_val = preprocess_data(X_val, y_val)
+            
+            model = create_simple_model(X_train.shape[1], len(np.unique(y_train)))
+            model.compile(
+                optimizer=optimizer,
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy']
+            )
+            
+            start_time = time.time()
+            history = model.fit(X_train, y_train, validation_data=(X_val, y_val), 
+                              epochs=100, verbose=0)
+            end_time = time.time()
+            
+            scores.append(max(history.history['val_accuracy']))
+            times.append(end_time - start_time)
+        
+        return np.mean(scores), np.mean(times)
+    
+    def _run_gbdt_benchmark(self, algorithm, X, y):
+        """Run GBDT model benchmark."""
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        scores = []
+        times = []
+        
+        for train_idx, val_idx in kf.split(X, y):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            X_train, y_train = preprocess_data(X_train, y_train)
+            X_val, y_val = preprocess_data(X_val, y_val)
+            
+            start_time = time.time()
+            if algorithm == 'XGBoost':
+                acc, _ = train_xgboost(X_train, y_train, X_val, y_val)
+            else:  # LightGBM
+                acc, _ = train_lightgbm(X_train, y_train, X_val, y_val)
+            end_time = time.time()
+            
+            scores.append(acc)
+            times.append(end_time - start_time)
+        
+        return np.mean(scores), np.mean(times)
 
 if __name__ == "__main__":
     print("LPECO: Lion with Predictive Error Correction")
-    print("Added comprehensive benchmarking framework")
+    print("Added comprehensive benchmarking system")
