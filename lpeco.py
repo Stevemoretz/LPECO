@@ -637,6 +637,76 @@ class OptimizerBenchmark:
         
         return np.mean(scores), np.mean(times)
 
+def set_random_seed(seed: int = 42) -> None:
+    """Set random seeds for reproducibility."""
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+def configure_gpu(use_gpu: bool = True) -> bool:
+    """Configure GPU usage for TensorFlow."""
+    if use_gpu:
+        try:
+            gpus = tf.config.experimental.list_physical_devices('GPU')
+            if gpus:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                return True
+        except RuntimeError as e:
+            print(f"GPU configuration failed: {e}")
+    return False
+
+def main(use_gpu: bool = True, use_cv: bool = False, use_cache: bool = True) -> OptimizerBenchmark:
+    """Main function to run the complete benchmark.
+    
+    Args:
+        use_gpu: Whether to use GPU acceleration
+        use_cv: Whether to use cross-validation
+        use_cache: Whether to use cached results
+        
+    Returns:
+        OptimizerBenchmark: The benchmark instance with results
+    """
+    print("LPECO: Lion with Predictive Error Correction Optimizer")
+    print("=" * 60)
+    
+    # Set random seed for reproducibility
+    set_random_seed(42)
+    
+    # Configure GPU
+    gpu_available = configure_gpu(use_gpu)
+    print(f"GPU available: {gpu_available}")
+    
+    # Initialize benchmark
+    benchmark = OptimizerBenchmark(use_cache=use_cache)
+    
+    print("Running comprehensive benchmark...")
+    print("This may take several hours depending on your hardware.")
+    
+    # Run benchmark
+    results_df = benchmark.run_full_benchmark()
+    
+    print("\nGenerating analysis plots...")
+    # Generate plots
+    create_analysis_plots(results_df)
+    
+    print("\nPerforming statistical analysis...")
+    # Statistical analysis
+    friedman_result = friedman_test(results_df)
+    if friedman_result:
+        print(f"Friedman test p-value: {friedman_result['p_value']:.4f}")
+    
+    print("\nBenchmark completed successfully!")
+    print(f"Results saved to analysis/plots/")
+    
+    return benchmark
+
 if __name__ == "__main__":
-    print("LPECO: Lion with Predictive Error Correction")
-    print("Added comprehensive benchmarking system")
+    import argparse
+    parser = argparse.ArgumentParser(description='LPECO Benchmark')
+    parser.add_argument('--no-gpu', action='store_true', help='Disable GPU usage')
+    parser.add_argument('--no-cache', action='store_true', help='Disable result caching')
+    parser.add_argument('--cv', action='store_true', help='Use cross-validation')
+    
+    args = parser.parse_args()
+    
+    main(use_gpu=not args.no_gpu, use_cv=args.cv, use_cache=not args.no_cache)
