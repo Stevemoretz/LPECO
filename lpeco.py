@@ -1,6 +1,12 @@
 """
-Basic Lion Optimizer Implementation
-Author: Siavash Mobarhan
+LPECO: Lion with Predictive Error Correction Optimizer
+A novel optimizer that enhances the Lion algorithm through principled error correction.
+
+This module provides a comprehensive benchmark framework for comparing neural network
+optimizers against gradient boosted decision trees on tabular data.
+
+Author: Siavash Mobarhan, Sogand Tatlari
+License: MIT
 """
 
 import tensorflow as tf
@@ -30,6 +36,8 @@ pio.renderers.default = "notebook"
 import plotly.express as px
 import plotly.graph_objects as go
 import seaborn as sns
+import argparse
+from typing import Union, Dict, List, Any, Optional
 
 class LionPredictiveErrorCorrectionOptimizer(keras.optimizers.Optimizer):
     """Lion optimizer with predictive error correction based on PI control theory."""
