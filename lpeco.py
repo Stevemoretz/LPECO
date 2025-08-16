@@ -464,8 +464,8 @@ plt.close()
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/mean_algorithm_rank.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
+plt.close()
+
     print(f"Analysis plots saved to {output_dir}/")
 
 def plot_equivalence_analysis(scores1, scores2, algorithm1, algorithm2, output_dir='analysis/plots'):
@@ -493,6 +493,73 @@ def plot_equivalence_analysis(scores1, scores2, algorithm1, algorithm2, output_d
 plt.tight_layout()
     plt.savefig(f'{output_dir}/equivalence_analysis_{algorithm1}_vs_{algorithm2}.png', 
                 dpi=300, bbox_inches='tight')
+plt.close()
+
+def generate_meta_analysis_plot(results_df, output_dir='analysis/plots'):
+    """Generate meta-analysis plots."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Calculate class balance for each dataset
+    class_balance = []
+    lpeco_advantages = []
+    
+    for dataset in results_df['dataset'].unique():
+        dataset_data = results_df[results_df['dataset'] == dataset]
+        
+        # Calculate class balance (simplified)
+        lpeco_score = dataset_data[dataset_data['algorithm'] == 'LPECO']['score'].mean()
+        gbdt_scores = dataset_data[dataset_data['algorithm'].isin(['XGBoost', 'LightGBM'])]['score'].mean()
+        
+        advantage = lpeco_score - gbdt_scores
+        lpeco_advantages.append(advantage)
+        
+        # Simplified class balance calculation
+        balance = 0.5  # Placeholder - would need actual class distribution
+        class_balance.append(balance)
+    
+    # Create meta-analysis plot
+    plt.figure(figsize=(10, 6))
+    plt.scatter(class_balance, lpeco_advantages)
+    plt.xlabel('Class Balance')
+    plt.ylabel('LPECO Advantage')
+    plt.title('Meta-Analysis: LPECO Advantage vs Class Balance')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/meta_analysis_class_balance.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def create_convergence_plots(results_df, output_dir='analysis/plots'):
+    """Create convergence analysis plots."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # This would require storing epoch-by-epoch data
+    # For now, create a placeholder plot
+    plt.figure(figsize=(12, 8))
+    plt.title('Training Convergence Analysis')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/convergence_analysis.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def create_speed_accuracy_plots(results_df, output_dir='analysis/plots'):
+    """Create speed vs accuracy plots."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    plt.figure(figsize=(10, 8))
+    for algorithm in results_df['algorithm'].unique():
+        alg_data = results_df[results_df['algorithm'] == algorithm]
+        plt.scatter(alg_data['training_time'], alg_data['score'], 
+                   label=algorithm, alpha=0.7, s=50)
+    
+    plt.xlabel('Training Time (seconds)')
+    plt.ylabel('Accuracy')
+    plt.title('Speed vs Accuracy Trade-off')
+    plt.legend()
+    plt.grid(True)
+plt.tight_layout()
+    plt.savefig(f'{output_dir}/speed_vs_accuracy.png', dpi=300, bbox_inches='tight')
 plt.close()
 
 class OptimizerBenchmark:
