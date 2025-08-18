@@ -763,6 +763,9 @@ def main(use_gpu: bool = True, use_cv: bool = False, use_cache: bool = True) -> 
     print("\nGenerating analysis plots...")
     # Generate plots
     create_analysis_plots(results_df)
+    generate_meta_analysis_plot(results_df)
+    create_convergence_plots(results_df)
+    create_speed_accuracy_plots(results_df)
     
     print("\nPerforming statistical analysis...")
     # Statistical analysis
