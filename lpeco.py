@@ -788,3 +788,144 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     main(use_gpu=not args.no_gpu, use_cv=args.cv, use_cache=not args.no_cache)
+
+# ==============================================================================
+# HELPER FUNCTIONS FOR CACHING AND REPRODUCIBILITY
+# ==============================================================================
+
+def load_cache_helper() -> Dict[str, Any]:
+    """Load cached benchmark results if available."""
+    if 'load_cache' in globals() and callable(globals()['load_cache']):
+        return globals()['load_cache']()
+    return {}
+
+def save_to_cache_helper(hyperparams_hash: str, name: str, dataset: str, 
+                  model_type: str, score: float, training_time: float) -> None:
+    """Save benchmark results to cache."""
+    if 'save_to_cache' in globals() and callable(globals()['save_to_cache']):
+        globals()['save_to_cache'](hyperparams_hash, name, dataset, model_type, score, training_time)
+
+def set_random_seed_helper(seed: int = 42) -> None:
+    """Set random seeds for reproducibility."""
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+def generate_hyperparams_str_helper(param_dict: Dict[str, Any]) -> str:
+    """Generate a stable hash string from hyperparameters."""
+    sorted_params = sorted(param_dict.items())
+    param_str = '_'.join([f"{k}_{v}" for k, v in sorted_params])
+    return hashlib.md5(param_str.encode()).hexdigest()
+
+# ==============================================================================
+# CUSTOM CALLBACKS FOR PLOTTING EPOCH-BY-EPOCH CONVERGENCE
+# ==============================================================================
+
+class TimingCallback(keras.callbacks.Callback):
+    """Keras callback to record the time of each epoch."""
+    
+    def on_epoch_begin(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        self.epoch_start_time = time.time()
+
+    def on_epoch_end(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        if not hasattr(self, 'epoch_times'):
+            self.epoch_times = []
+        self.epoch_times.append(time.time() - self.epoch_start_time)
+
+class LGBMTimingAndAccuracyCallback:
+    """LightGBM callback to record validation accuracy and time per boosting round."""
+    
+    def __init__(self, X_val, y_val):
+        self.X_val = X_val
+        self.y_val = y_val
+        self.accuracies = []
+        self.times = []
+        self.start_time = None
+    
+    def __call__(self, env):
+        if self.start_time is None:
+            self.start_time = time.time()
+        
+        # Calculate accuracy
+        y_pred = env.model.predict(self.X_val, num_iteration=env.iteration)
+        y_pred_class = np.argmax(y_pred, axis=1)
+        accuracy = accuracy_score(self.y_val, y_pred_class)
+        self.accuracies.append(accuracy)
+        
+        # Record time
+        current_time = time.time()
+        self.times.append(current_time - self.start_time)
+
+class XGBoostTimingAndAccuracyCallback:
+    """XGBoost callback to record validation accuracy and time per boosting round."""
+    
+    def __init__(self, X_val, y_val):
+        self.X_val = X_val
+        self.y_val = y_val
+        self.accuracies = []
+        self.times = []
+        self.start_time = None
+    
+    def __call__(self, env):
+        if self.start_time is None:
+            self.start_time = time.time()
+        
+        # Calculate accuracy
+        y_pred = env.model.predict(self.X_val)
+        accuracy = accuracy_score(self.y_val, y_pred)
+        self.accuracies.append(accuracy)
+        
+        # Record time
+        current_time = time.time()
+        self.times.append(current_time - self.start_time)
+
+# ==============================================================================
+# ENHANCED DATASET LOADING FUNCTIONS
+# ==============================================================================
+
+def load_small_datasets() -> Dict[str, Any]:
+    """Load small datasets for quick testing."""
+    datasets = {}
+    
+    # Create synthetic datasets for testing
+    from sklearn.datasets import make_classification
+    
+    for i, (n_samples, n_features, n_classes) in enumerate([(100, 10, 2), (150, 15, 3), (200, 20, 2)]):
+        X, y = make_classification(n_samples=n_samples, n_features=n_features, 
+                                 n_classes=n_classes, random_state=42+i)
+        datasets[f'synthetic_{i+1}'] = {'X': X, 'y': y}
+    
+    return datasets
+
+def load_medium_datasets() -> Dict[str, Any]:
+    """Load medium-sized datasets for comprehensive testing."""
+    datasets = {}
+    
+    # Create synthetic datasets for testing
+    from sklearn.datasets import make_classification
+    
+    for i, (n_samples, n_features, n_classes) in enumerate([(500, 25, 3), (750, 30, 4), (1000, 35, 2)]):
+        X, y = make_classification(n_samples=n_samples, n_features=n_features, 
+                                 n_classes=n_classes, random_state=42+i)
+        datasets[f'medium_synthetic_{i+1}'] = {'X': X, 'y': y}
+    
+    return datasets
+
+def preprocess_data_properly(X_train, X_test, y_train, y_test):
+    """Proper data preprocessing that handles train/test split correctly."""
+    # Handle missing values
+    if hasattr(X_train, 'fillna'):
+        X_train = X_train.fillna(X_train.mean())
+        X_test = X_test.fillna(X_train.mean())  # Use train mean for test
+    
+    # Encode categorical variables
+    le = LabelEncoder()
+    if y_train.dtype == 'object':
+        y_train = le.fit_transform(y_train)
+        y_test = le.transform(y_test)
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    return X_train_scaled, X_test_scaled, y_train, y_test
