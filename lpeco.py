@@ -929,3 +929,225 @@ def preprocess_data_properly(X_train, X_test, y_train, y_test):
     X_test_scaled = scaler.transform(X_test)
     
     return X_train_scaled, X_test_scaled, y_train, y_test
+
+# ==============================================================================
+# ENHANCED STATISTICAL ANALYSIS FUNCTIONS
+# ==============================================================================
+
+def perform_comprehensive_statistical_analysis(results_df):
+    """Perform comprehensive statistical analysis on benchmark results."""
+    analysis_results = {}
+    
+    # Friedman test
+    friedman_result = friedman_test(results_df)
+    analysis_results['friedman'] = friedman_result
+    
+    # Pairwise equivalence tests
+    algorithms = results_df['algorithm'].unique()
+    equivalence_results = {}
+    
+    for i, alg1 in enumerate(algorithms):
+        for alg2 in algorithms[i+1:]:
+            scores1 = results_df[results_df['algorithm'] == alg1]['score'].values
+            scores2 = results_df[results_df['algorithm'] == alg2]['score'].values
+            
+            # TOST equivalence test
+            tost_result = equivalence_test(scores1, scores2)
+            equivalence_results[f'{alg1}_vs_{alg2}'] = tost_result
+            
+            # Bayesian ROPE analysis
+            rope_result = bayesian_rope_analysis(scores1, scores2)
+            equivalence_results[f'{alg1}_vs_{alg2}_rope'] = rope_result
+    
+    analysis_results['equivalence'] = equivalence_results
+    
+    # Performance ranking
+    mean_scores = results_df.groupby('algorithm')['score'].mean().sort_values(ascending=False)
+    analysis_results['ranking'] = mean_scores.to_dict()
+    
+    return analysis_results
+
+def create_detailed_convergence_analysis(dataset_name, X, y, algorithms=['LPECO', 'Lion', 'AdamW']):
+    """Create detailed convergence analysis for a specific dataset."""
+    convergence_data = {}
+    
+    for algorithm in algorithms:
+        if algorithm == 'LPECO':
+            # Use hyperparameter optimization
+            best_params, _ = optimize_lpeco_hyperparams(X, y, n_trials=20)
+            optimizer = LionPredictiveErrorCorrectionOptimizer(**best_params)
+        elif algorithm == 'Lion':
+            optimizer = LionPredictiveErrorCorrectionOptimizer(
+                learning_rate=0.001, error_decay=1.0, correction_strength=0.0
+            )
+        else:  # AdamW
+            optimizer = keras.optimizers.AdamW(learning_rate=0.001)
+        
+        # Train with callbacks
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_val, y_train, y_val = preprocess_data_properly(X_train, X_val, y_train, y_val)
+        
+        model = create_simple_model(X_train.shape[1], len(np.unique(y_train)))
+        model.compile(
+            optimizer=optimizer,
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
+        
+        timing_callback = TimingCallback()
+        history = model.fit(
+            X_train, y_train,
+            validation_data=(X_val, y_val),
+            epochs=100,
+            callbacks=[timing_callback],
+            verbose=0
+        )
+        
+        convergence_data[algorithm] = {
+            'train_acc': history.history['accuracy'],
+            'val_acc': history.history['val_accuracy'],
+            'train_loss': history.history['loss'],
+            'val_loss': history.history['val_loss'],
+            'epoch_times': timing_callback.epoch_times
+        }
+    
+    return convergence_data
+
+def generate_comprehensive_plots(results_df, convergence_data=None, output_dir='analysis/plots'):
+    """Generate comprehensive plots for the paper."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 1. Performance distribution
+    create_analysis_plots(results_df, output_dir)
+    
+    # 2. Meta-analysis
+    generate_meta_analysis_plot(results_df, output_dir)
+    
+    # 3. Speed vs accuracy
+    create_speed_accuracy_plots(results_df, output_dir)
+    
+    # 4. Convergence analysis
+    if convergence_data:
+        create_convergence_plots_from_data(convergence_data, output_dir)
+    
+    # 5. Statistical significance plots
+    create_statistical_significance_plots(results_df, output_dir)
+    
+    print(f"All plots saved to {output_dir}/")
+
+def create_convergence_plots_from_data(convergence_data, output_dir='analysis/plots'):
+    """Create convergence plots from detailed convergence data."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    plt.figure(figsize=(12, 8))
+    
+    for algorithm, data in convergence_data.items():
+        epochs = range(1, len(data['val_acc']) + 1)
+        plt.plot(epochs, data['val_acc'], label=f'{algorithm} (Val)', linewidth=2)
+        plt.plot(epochs, data['train_acc'], label=f'{algorithm} (Train)', 
+                linestyle='--', alpha=0.7)
+    
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Training Convergence Analysis')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/convergence_epochs_detailed.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def create_statistical_significance_plots(results_df, output_dir='analysis/plots'):
+    """Create plots showing statistical significance of results."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create a heatmap of p-values for pairwise comparisons
+    algorithms = results_df['algorithm'].unique()
+    p_value_matrix = np.ones((len(algorithms), len(algorithms)))
+    
+    for i, alg1 in enumerate(algorithms):
+        for j, alg2 in enumerate(algorithms):
+            if i != j:
+                scores1 = results_df[results_df['algorithm'] == alg1]['score'].values
+                scores2 = results_df[results_df['algorithm'] == alg2]['score'].values
+                
+                # Perform t-test
+                from scipy.stats import ttest_ind
+                _, p_value = ttest_ind(scores1, scores2)
+                p_value_matrix[i, j] = p_value
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(p_value_matrix, 
+                xticklabels=algorithms, 
+                yticklabels=algorithms,
+                annot=True, 
+                fmt='.3f',
+                cmap='viridis')
+    plt.title('Pairwise Comparison P-values')
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/statistical_significance_heatmap.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+# ==============================================================================
+# ENHANCED BENCHMARKING WITH DETAILED TRACKING
+# ==============================================================================
+
+class EnhancedOptimizerBenchmark(OptimizerBenchmark):
+    """Enhanced benchmarking system with detailed convergence tracking."""
+    
+    def __init__(self, use_cache=True, track_convergence=True):
+        super().__init__(use_cache)
+        self.track_convergence = track_convergence
+        self.convergence_data = {}
+    
+    def run_enhanced_benchmark(self, datasets=None, n_trials=128):
+        """Run enhanced benchmark with detailed convergence tracking."""
+        if datasets is None:
+            datasets = load_openml_tabular_datasets()
+        
+        algorithms = ['LPECO', 'Lion', 'AdamW', 'XGBoost', 'LightGBM']
+        
+        for dataset_name, dataset_data in datasets.items():
+            print(f"Processing dataset: {dataset_name}")
+            X, y = dataset_data['X'], dataset_data['y']
+            
+            # Store convergence data for this dataset
+            if self.track_convergence:
+                self.convergence_data[dataset_name] = create_detailed_convergence_analysis(
+                    dataset_name, X, y, ['LPECO', 'Lion', 'AdamW']
+                )
+            
+            for algorithm in algorithms:
+                print(f"  Running {algorithm}...")
+                
+                # Check cache first
+                cache_key = f"{algorithm}_{dataset_name}_neural_network_{generate_hyperparams_str({})}"
+                if cache_key in self.cache:
+                    result = self.cache[cache_key]
+                    self.results.append({
+                        'dataset': dataset_name,
+                        'algorithm': algorithm,
+                        'score': result['score'],
+                        'training_time': result['training_time']
+                    })
+                    continue
+                
+                # Run optimization
+                if algorithm == 'LPECO':
+                    score, time_taken = self._run_lpeco_optimization(X, y, n_trials)
+                elif algorithm in ['Lion', 'AdamW']:
+                    score, time_taken = self._run_optimizer_benchmark(algorithm, X, y)
+                else:  # GBDT models
+                    score, time_taken = self._run_gbdt_benchmark(algorithm, X, y)
+                
+                # Cache result
+                if self.use_cache:
+                    save_to_cache("", algorithm, dataset_name, "neural_network", score, time_taken)
+                
+                self.results.append({
+                    'dataset': dataset_name,
+                    'algorithm': algorithm,
+                    'score': score,
+                    'training_time': time_taken
+                })
+        
+        return pd.DataFrame(self.results)
