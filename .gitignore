@@ -50,6 +50,22 @@ venv.bak/
 *.pkl
 *.joblib
 
+# Cache directories
+cache/
+.cache/
+history_cache/
+openml_cache/
+
+# Analysis outputs
+analysis/plots/*.png
+analysis/plots/*.html
+cached_algorithms_results
+
+# Paper files - NEVER commit these
+Mobarhan-Tatlari-LPECO-2025.md
+Mobarhan-Tatlari-LPECO-2025.pdf
+.git.old
+
 # OS
 .DS_Store
 .DS_Store?
